@@ -1,175 +1,230 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { apiClient, CompetitorMatrixResponse } from "@/api/client";
-import { LandingHeader } from "./landing/LandingHeader";
-import { LandingHero } from "./landing/LandingHero";
-import { LiveAuditResultView } from "./landing/LiveAuditResultView";
-import { AuthModal, AuthMode } from "./landing/AuthModal";
+import React, { useState } from "react";
+import { ArrowRight, Globe2, Lock, Mail, ShieldCheck, User } from "lucide-react";
+import { apiClient } from "@/api/client";
+import { PlatformBrandLogo } from "./brand/PlatformBrandLogo";
+import { appConfig } from "@/config/appConfig";
+import { brandColors, uiStyles } from "@/config/designSystem";
 import { uiStrings } from "@/config/uiStrings";
+
+export type AuthMode = "login" | "signup";
 
 interface LoginScreenProps {
   onLogin: () => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
-  const [urlInput, setUrlInput] = useState("");
-  const [isAuditing, setIsAuditing] = useState(false);
-  const [auditResult, setAuditResult] = useState<CompetitorMatrixResponse | null>(null);
-  const [auditError, setAuditError] = useState<string | null>(null);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [mode, setMode] = useState<AuthMode>("login");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [companyUrl, setCompanyUrl] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
 
-  const handleOpenAuth = (mode: AuthMode = "login") => {
-    setAuthMode(mode);
-    setShowAuthModal(true);
-  };
-
-  const handleNavigateHome = () => {
-    setAuditResult(null);
-    setAuditError(null);
-    setUrlInput("");
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("domain");
-      window.history.replaceState({}, "", url.toString());
-    } catch {}
-  };
-
-  const handleRunAudit = useCallback(async (overrideUrl?: string, cachedSnapshot?: CompetitorMatrixResponse) => {
-    const rawUrl = overrideUrl || urlInput;
-    const targetUrl = rawUrl.trim();
-    if (!targetUrl) return;
-
-    if (overrideUrl) {
-      setUrlInput(overrideUrl);
-    }
-
-    // Instant replay if full dashboard snapshot is already cached
-    if (cachedSnapshot) {
-      setAuditResult(cachedSnapshot);
-      const domain = cachedSnapshot.target?.domain || targetUrl.replace(/^https?:\/\//i, "").split("/")[0];
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.set("domain", domain);
-        window.history.replaceState({}, "", url.toString());
-      } catch {}
-      return;
-    }
-
-    setIsAuditing(true);
-    setAuditError(null);
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAuthError("");
+    setAuthLoading(true);
 
     try {
-      const response = await apiClient.fetchCompetitorMatrix(targetUrl);
-      setAuditResult(response);
-
-      // Sync persistent shareable URL query param
-      const domain = response.target?.domain || targetUrl.replace(/^https?:\/\//i, "").split("/")[0];
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.set("domain", domain);
-        window.history.replaceState({}, "", url.toString());
-      } catch {}
-
-      // Save full result snapshot and dashboard state in recent searches
-      try {
-        const saved = JSON.parse(localStorage.getItem("aiseo_recent_searches") || "[]");
-        const brand = response.target?.brand || domain;
-        const logoUrl = response.target?.logo_url;
-        const filtered = saved.filter((item: any) => item.domain.toLowerCase() !== domain.toLowerCase());
-        const updated = [
-          {
-            domain,
-            brand,
-            logoUrl,
-            timestamp: new Date().toISOString(),
-            url: targetUrl,
-            snapshot: response, // Full dashboard result snapshot
-          },
-          ...filtered,
-        ].slice(0, 15);
-        localStorage.setItem("aiseo_recent_searches", JSON.stringify(updated));
-
-        // Archive into comprehensive audit history store
-        const historyStore = JSON.parse(localStorage.getItem("aiseo_audit_history_records") || "[]");
-        const updatedHistory = [
-          {
-            id: `audit-${Date.now()}`,
-            domain,
-            brand,
-            url: targetUrl,
-            logoUrl,
-            timestamp: new Date().toISOString(),
-            visibilityScore: response.target_mention_rate || 50,
-            opportunityScore: response.gap_to_leader || 25,
-            snapshot: response,
-          },
-          ...historyStore,
-        ].slice(0, 50);
-        localStorage.setItem("aiseo_audit_history_records", JSON.stringify(updatedHistory));
-      } catch (storageErr) {
-        console.error("Failed to update recent searches", storageErr);
-      }
-    } catch (errorContext) {
-      console.error("Audit benchmark error:", errorContext);
-      setAuditError("Unable to complete live audit for this domain. Please verify the URL.");
+      const targetUser = username.trim();
+      const response = await apiClient.login(targetUser, password);
+      localStorage.setItem("aiseo_auth_token", response.token);
+      onLogin();
+    } catch (errorContext: any) {
+      setAuthError(
+        errorContext.message || "Authentication failed. Please verify your credentials."
+      );
     } finally {
-      setIsAuditing(false);
+      setAuthLoading(false);
     }
-  }, [urlInput]);
-
-  // Handle persistent shareable audit links (?domain=example.com) on initial mount
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const domainParam = params.get("domain") || params.get("url") || params.get("audit");
-      if (domainParam && domainParam.trim()) {
-        const cleaned = domainParam.trim();
-        setUrlInput(cleaned);
-        handleRunAudit(cleaned);
-      }
-    } catch (err) {
-      console.error("Failed to parse shareable URL param", err);
-    }
-  }, [handleRunAudit]);
+  };
 
   return (
-    <div className="min-h-screen bg-[#FAF9F5] text-slate-900 font-sans flex flex-col selection:bg-black selection:text-white relative">
-      {/* Header with 2 Distinct Buttons */}
-      <LandingHeader
-        onOpenAuth={handleOpenAuth}
-        onNavigateHome={handleNavigateHome}
-      />
-
-      {/* Main Viewport Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-14 py-12 lg:py-20 relative z-10">
-        {!auditResult ? (
-          /* Centered Editorial Landing Hero */
-          <div className="max-w-3xl mx-auto pt-4 sm:pt-8 pb-12 flex flex-col items-center">
-            <LandingHero
-              urlInput={urlInput}
-              setUrlInput={setUrlInput}
-              isAuditing={isAuditing}
-              auditError={auditError}
-              onRunAudit={handleRunAudit}
+    <div
+      style={{ backgroundColor: brandColors.pageBg }}
+      className="min-h-screen text-slate-900 font-sans flex flex-col justify-center items-center px-4 sm:px-6 py-12 relative selection:bg-black selection:text-white"
+    >
+      <div className="w-full max-w-md space-y-6">
+        {/* Brand Logo & Headline */}
+        <div className="text-center space-y-2">
+          <div className="flex justify-center pb-2">
+            <PlatformBrandLogo
+              size={42}
+              brandText={appConfig.brandName}
+              textClassName="text-2xl font-bold tracking-tight text-slate-900 font-sans"
             />
           </div>
-        ) : (
-          /* Live Dynamic Audit View */
-          <LiveAuditResultView
-            auditResult={auditResult}
-            onOpenAuth={handleOpenAuth}
-            onNavigateHome={handleNavigateHome}
-          />
-        )}
-      </main>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            {mode === "login"
+              ? uiStrings.auth.loginTitle
+              : uiStrings.auth.signupTitle}
+          </h1>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            {mode === "login"
+              ? uiStrings.auth.loginSubtitle
+              : uiStrings.auth.signupSubtitle}
+          </p>
+        </div>
 
-      {/* Authentication Modal with Sign In / Sign Up tabs */}
-      <AuthModal
-        isOpen={showAuthModal}
-        initialMode={authMode}
-        onClose={() => setShowAuthModal(false)}
-        onSuccess={onLogin}
-      />
+        {/* Auth Card Container */}
+        <div
+          style={{
+            backgroundColor: brandColors.windowBg,
+            borderColor: brandColors.windowBorder,
+          }}
+          className="rounded-3xl border p-7 sm:p-8 shadow-xl space-y-6 relative"
+        >
+          {/* Segmented Mode Switcher */}
+          <div
+            style={{ backgroundColor: brandColors.iconBg, borderColor: brandColors.windowBorder }}
+            className="flex p-1 rounded-xl border"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setAuthError("");
+              }}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                mode === "login"
+                  ? uiStyles.segmented.primaryActive
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              {uiStrings.auth.buttons.switchModeToSignIn}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signup");
+                setAuthError("");
+              }}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                mode === "signup"
+                  ? uiStyles.segmented.primaryActive
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              {uiStrings.auth.buttons.switchModeToSignUp}
+            </button>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {authError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium text-center">
+                {authError}
+              </div>
+            )}
+
+            {mode === "signup" && (
+              <>
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    {uiStrings.auth.labels.fullName}
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(event) => setFullName(event.target.value)}
+                      placeholder={uiStrings.auth.placeholders.fullName}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-black focus:ring-2 focus:ring-black/10 transition-all font-sans"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    {uiStrings.auth.labels.companyWebsite}
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <Globe2 className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="url"
+                      value={companyUrl}
+                      onChange={(event) => setCompanyUrl(event.target.value)}
+                      placeholder={uiStrings.auth.placeholders.companyWebsite}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-black focus:ring-2 focus:ring-black/10 transition-all font-sans"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-700">
+                {uiStrings.auth.labels.workEmail}
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder={uiStrings.auth.placeholders.workEmail}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-black focus:ring-2 focus:ring-black/10 transition-all font-sans"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-700">
+                {uiStrings.auth.labels.password}
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder={uiStrings.auth.placeholders.password}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-black focus:ring-2 focus:ring-black/10 transition-all font-sans"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className={`w-full py-3 ${uiStyles.button.primary}`}
+            >
+              <span>
+                {authLoading
+                  ? uiStrings.auth.buttons.submitting
+                  : mode === "login"
+                  ? uiStrings.auth.buttons.signIn
+                  : uiStrings.auth.buttons.signUp}
+              </span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
+
+          {/* Footer Terms & Security Notice */}
+          <div className="pt-2 text-center space-y-2 border-t border-slate-200/60">
+            <p className="text-[11px] text-slate-500">
+              {uiStrings.auth.notices.termsAgreement}
+            </p>
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-mono">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{uiStrings.auth.notices.securityBadge}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
