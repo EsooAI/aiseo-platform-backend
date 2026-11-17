@@ -28,14 +28,13 @@ import { TrendsBreakoutTab } from "./components/trends/TrendsBreakoutTab";
 import { QuestionLabTab } from "./components/lab/QuestionLabTab";
 import { KeywordIntelTab } from "./components/intelligence/KeywordIntelTab";
 import { EmailReportsTab } from "./components/reports/EmailReportsTab";
-import { ArchitectureFlowTab } from "./components/flow/ArchitectureFlowTab";
-import { VaultSettingsTab } from "./components/vault/VaultSettingsTab";
 import { Language, translations } from "./i18n/translations";
 import { LoginScreen } from "./components/LoginScreen";
 import { PlatformBrandLogo } from "./components/brand/PlatformBrandLogo";
 import { uiStyles } from "./config/designSystem";
 
 type TabKey =
+  | "overview"
   | "crawl"
   | "leaderboard"
   | "history_leaderboard"
@@ -43,17 +42,16 @@ type TabKey =
   | "intel"
   | "trends"
   | "lab"
-  | "overview"
-  | "email"
-  | "flow"
-  | "vault";
+  | "email";
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return !!localStorage.getItem("aiseo_auth_token");
   });
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
-    return (localStorage.getItem("aiseo_tab") as TabKey) || "crawl";
+    const saved = localStorage.getItem("aiseo_tab") as TabKey;
+    if (saved === ("vault" as any) || saved === ("flow" as any)) return "overview";
+    return saved || "overview";
   });
   const [lang, setLang] = useState<Language>(() => {
     return (localStorage.getItem("aiseo_lang") as Language) || "en";
@@ -91,9 +89,6 @@ export default function App() {
 
   const secondaryTabs: { id: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: "email", label: t.nav.email, icon: Mail },
-    { id: "vault", label: t.nav.vault, icon: KeyRound },
-    { id: "overview", label: t.nav.overview, icon: LayoutDashboard },
-    { id: "flow", label: t.nav.flow, icon: Workflow },
     { id: "history_leaderboard", label: isRtl ? "سجل الفحوصات" : "History", icon: History },
   ];
 
@@ -115,6 +110,18 @@ export default function App() {
         {/* Center: Primary Core Navigation (Desktop) */}
         <nav className="hidden lg:flex items-center gap-1 py-0.5">
           <button
+            onClick={() => setActiveTab("overview")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${
+              activeTab === "overview"
+                ? uiStyles.navTab.active
+                : uiStyles.navTab.inactive
+            }`}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5 text-primary" />
+            <span>{t.nav.overview}</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("crawl")}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${
               activeTab === "crawl"
@@ -122,7 +129,7 @@ export default function App() {
                 : uiStyles.navTab.inactive
             }`}
           >
-            <Globe2 className="w-3.5 h-3.5" />
+            <Globe2 className="w-3.5 h-3.5 text-emerald-500" />
             <span>{t.nav.crawl}</span>
           </button>
 
@@ -158,7 +165,7 @@ export default function App() {
                 : uiStyles.navTab.inactive
             }`}
           >
-            <ListFilter className="w-3.5 h-3.5" />
+            <ListFilter className="w-3.5 h-3.5 text-purple-500" />
             <span>{t.nav.intel}</span>
           </button>
 
@@ -170,7 +177,7 @@ export default function App() {
                 : uiStyles.navTab.inactive
             }`}
           >
-            <Flame className="w-3.5 h-3.5" />
+            <Flame className="w-3.5 h-3.5 text-orange-500" />
             <span>{t.nav.trends}</span>
           </button>
 
@@ -182,7 +189,7 @@ export default function App() {
                 : uiStyles.navTab.inactive
             }`}
           >
-            <MessageSquareQuote className="w-3.5 h-3.5" />
+            <MessageSquareQuote className="w-3.5 h-3.5 text-cyan-500" />
             <span>{t.nav.lab}</span>
           </button>
 
@@ -315,6 +322,18 @@ export default function App() {
                 {isRtl ? "الأدوات الرئيسية" : "Core Tools"}
               </div>
               <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { setActiveTab("overview"); setMobileMenuOpen(false); }}
+                  className={`p-3 rounded-xl text-xs font-medium flex items-center gap-2.5 transition-all text-left ${
+                    activeTab === "overview"
+                      ? uiStyles.navTab.active
+                      : "text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100"
+                  }`}
+                >
+                  <LayoutDashboard className="w-4 h-4 text-primary shrink-0" />
+                  <span className="truncate">{t.nav.overview}</span>
+                </button>
+
                 <button
                   onClick={() => { setActiveTab("crawl"); setMobileMenuOpen(false); }}
                   className={`p-3 rounded-xl text-xs font-medium flex items-center gap-2.5 transition-all text-left ${
@@ -479,19 +498,11 @@ export default function App() {
         <div style={{ display: activeTab === "email" ? "block" : "none" }}>
           <EmailReportsTab />
         </div>
-        
-        <div style={{ display: activeTab === "flow" ? "block" : "none" }}>
-          <ArchitectureFlowTab />
-        </div>
-        
-        <div style={{ display: activeTab === "vault" ? "block" : "none" }}>
-          <VaultSettingsTab />
-        </div>
       </main>
 
       {/* Clean Whisper-Quiet Footer */}
       <footer className="border-t border-slate-200/70 bg-white py-4 px-6 text-center text-xs text-slate-400">
-        © 2026 AISEO Platform. All rights reserved.
+        © 2026 {translations[lang]?.appName || "EsooAI"}. All rights reserved.
       </footer>
     </div>
   );
